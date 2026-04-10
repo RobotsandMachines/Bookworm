@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% block title %}Bookworm - Price Manager{% endblock %}
+
+{% block content %}
+<h2 class="page-title">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+    Price Manager
+</h2>
+
+<!-- Store filter -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Select Store</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="price-store">Store</label>
+            <select id="price-store" class="form-control" onchange="loadPricing()"></select>
+        </div>
+    </div>
+</div>
+
+<!-- Individual price editor -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Book Prices</span>
+        <span id="price-count" style="font-size:0.82rem; color:var(--brown-light);"></span>
+    </div>
+    <div id="pricing-table">
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+            <p>Select a store to view and edit book prices.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk SALE section -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Bulk Sale / Promotion</span>
+        <span style="font-size:0.82rem; color:var(--brown-light);">Apply discounts to multiple books at once</span>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="bulk-store">Store</label>
+            <select id="bulk-store" class="form-control"></select>
+        </div>
+        <div class="form-group">
+            <label for="bulk-promo">Promotion Type</label>
+            <select id="bulk-promo" class="form-control">
+                <option value="percentage">Percentage Discount</option>
+                <option value="fixed_amount">Fixed Amount Off</option>
+                <option value="bogo">Buy One, Get One Free</option>
+                <option value="buy2get1">Buy 2, Get 1 Free</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="bulk-discount">Discount % (or fixed $ amount)</label>
+            <input type="number" id="bulk-discount" class="form-control" min="0" max="100" step="0.5" value="10">
+        </div>
+        <div class="form-group">
+            <label for="bulk-start">Start Date</label>
+            <input type="date" id="bulk-start" class="form-control">
+        </div>
+        <div class="form-group">
+            <label for="bulk-end">End Date</label>
+            <input type="date" id="bulk-end" class="form-control">
+        </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+        <button class="btn btn-outline btn-sm" onclick="loadBulkBooks()">Load Books for Selection</button>
+    </div>
+
+    <div id="bulk-book-list"></div>
+
+    <div style="margin-top:12px;">
+        <button class="btn btn-primary" onclick="applyBulkSale()" id="apply-bulk-btn" disabled>
+            Apply to Selected Books
+        </button>
+    </div>
+</div>
+
+<!-- Edit Price Modal -->
+<div class="modal-overlay" id="price-modal">
+    <div class="modal">
+        <h3 class="modal-title">Edit Price</h3>
+        <p id="price-modal-info"></p>
+        <div class="form-group">
+            <label for="edit-base-price">Base Price ($)</label>
+            <input type="number" id="edit-base-price" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+            <label for="edit-discount">Discount %</label>
+            <input type="number" id="edit-discount" class="form-control" min="0" max="100" step="0.5" value="0">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="edit-disc-start">Discount Start</label>
+                <input type="date" id="edit-disc-start" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="edit-disc-end">Discount End</label>
+                <input type="date" id="edit-disc-end" class="form-control">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="edit-promo-type">Promotion Type</label>
+            <select id="edit-promo-type" class="form-control">
+                <option value="none">None</option>
+                <option value="bogo">Buy One, Get One Free</option>
+                <option value="buy2get1">Buy 2, Get 1 Free</option>
+                <option value="percentage">Percentage</option>
+                <option value="fixed_amount">Fixed Amount Off</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="edit-promo-value">Promo Value</label>
+            <input type="number" id="edit-promo-value" class="form-control" min="0" step="0.01" value="0">
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="edit-promo-start">Promo Start</label>
+                <input type="date" id="edit-promo-start" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="edit-promo-end">Promo End</label>
+                <input type="date" id="edit-promo-end" class="form-control">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closePriceModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="savePrice()">Save</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let priceEditTarget = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadStoresIntoSelect('price-store');
+    loadStoresIntoSelect('bulk-store');
+
+    // Set default dates for bulk sale
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('bulk-start').value = today;
+    const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    document.getElementById('bulk-end').value = nextWeek;
+});
+
+// --- Load pricing table ---
+async function loadPricing() {
+    const storeId = document.getElementById('price-store').value;
+    const area = document.getElementById('pricing-table');
+
+    if (!storeId) return;
+
+    area.innerHTML = '<div style="text-align:center; padding:24px;"><span class="spinner"></span></div>';
+
+    try {
+        const data = await apiGet(`/api/pricing?store_id=${storeId}`);
+        if (!data || data.length === 0) {
+            area.innerHTML = '<div class="empty-state"><p>No pricing records for this store. Add books and set prices first.</p></div>';
+            document.getElementById('price-count').textContent = '';
+            return;
+        }
+
+        document.getElementById('price-count').textContent = `${data.length} books`;
+
+        const today = new Date().toISOString().split('T')[0];
+        let html = '<div class="table-wrapper"><table><thead><tr>';
+        html += '<th>Title</th><th>Author</th><th>Base Price</th><th>Discount</th><th>Disc. Dates</th><th>Promo</th><th>Effective Price</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const p of data) {
+            const bookTitle = p.books ? p.books.title : p.isbn_13;
+            const bookAuthor = p.books ? p.books.author : '';
+            const base = parseFloat(p.base_price || 0);
+            const disc = parseFloat(p.discount_percent || 0);
+
+            // Check if discount is currently active
+            let discActive = disc > 0;
+            if (p.discount_start && today < p.discount_start) discActive = false;
+            if (p.discount_end && today > p.discount_end) discActive = false;
+
+            const effective = discActive ? (base * (1 - disc / 100)).toFixed(2) : base.toFixed(2);
+
+            const discDisplay = disc > 0 ? `${disc}%` : '—';
+            const discDates = (p.discount_start || p.discount_end)
+                ? `${p.discount_start || '...'} → ${p.discount_end || '...'}`
+                : '—';
+            const promoDisplay = p.promo_type !== 'none'
+                ? `<span class="badge badge-green">${p.promo_type.toUpperCase()}</span>`
+                : '—';
+
+            html += `<tr>
+                <td><strong>${esc(bookTitle)}</strong></td>
+                <td>${esc(bookAuthor)}</td>
+                <td>$${base.toFixed(2)}</td>
+                <td>${discActive ? `<span class="promo-active">${discDisplay}</span>` : discDisplay}</td>
+                <td style="font-size:0.82rem;">${discDates}</td>
+                <td>${promoDisplay}</td>
+                <td><strong>$${effective}</strong></td>
+                <td>
+                    <button class="btn btn-outline btn-sm" onclick='openPriceModal(${JSON.stringify(p)})'>Edit</button>
+                </td>
+            </tr>`;
+        }
+
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    } catch (err) {
+        area.innerHTML = `<div class="empty-state"><p style="color:var(--danger);">${err.message}</p></div>`;
+    }
+}
+
+// --- Edit price modal ---
+function openPriceModal(p) {
+    priceEditTarget = { isbn_13: p.isbn_13, store_id: p.store_id };
+    const title = p.books ? p.books.title : p.isbn_13;
+    document.getElementById('price-modal-info').textContent = `Editing price for "${title}"`;
+    document.getElementById('edit-base-price').value = p.base_price || 0;
+    document.getElementById('edit-discount').value = p.discount_percent || 0;
+    document.getElementById('edit-disc-start').value = p.discount_start || '';
+    document.getElementById('edit-disc-end').value = p.discount_end || '';
+    document.getElementById('edit-promo-type').value = p.promo_type || 'none';
+    document.getElementById('edit-promo-value').value = p.promo_value || 0;
+    document.getElementById('edit-promo-start').value = p.promo_start || '';
+    document.getElementById('edit-promo-end').value = p.promo_end || '';
+    document.getElementById('price-modal').classList.add('show');
+}
+
+function closePriceModal() {
+    document.getElementById('price-modal').classList.remove('show');
+    priceEditTarget = null;
+}
+
+async function savePrice() {
+    if (!priceEditTarget) return;
+
+    const data = {
+        isbn_13: priceEditTarget.isbn_13,
+        store_id: priceEditTarget.store_id,
+        base_price: parseFloat(document.getElementById('edit-base-price').value) || 0,
+        discount_percent: parseFloat(document.getElementById('edit-discount').value) || 0,
+        discount_start: document.getElementById('edit-disc-start').value || null,
+        discount_end: document.getElementById('edit-disc-end').value || null,
+        promo_type: document.getElementById('edit-promo-type').value,
+        promo_value: parseFloat(document.getElementById('edit-promo-value').value) || 0,
+        promo_start: document.getElementById('edit-promo-start').value || null,
+        promo_end: document.getElementById('edit-promo-end').value || null,
+    };
+
+    try {
+        await apiPost('/api/pricing', data);
+        showToast('Price updated.');
+        closePriceModal();
+        loadPricing();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// --- Bulk SALE ---
+async function loadBulkBooks() {
+    const storeId = document.getElementById('bulk-store').value;
+    if (!storeId) { showToast('Select a store first.', 'warning'); return; }
+
+    const area = document.getElementById('bulk-book-list');
+    area.innerHTML = '<div style="text-align:center; padding:12px;"><span class="spinner"></span></div>';
+
+    try {
+        const books = await apiGet('/api/books');
+        if (!books || books.length === 0) {
+            area.innerHTML = '<p style="color:var(--brown-light); font-size:0.9rem;">No books in database.</p>';
+            return;
+        }
+
+        let html = '<div class="table-wrapper" style="max-height:300px; overflow-y:auto;"><table><thead><tr>';
+        html += '<th class="check-col"><input type="checkbox" id="select-all-bulk" onchange="toggleAllBulk(this)"></th>';
+        html += '<th>Title</th><th>Author</th><th>ISBN-13</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const b of books) {
+            html += `<tr>
+                <td class="check-col"><input type="checkbox" class="bulk-check" value="${esc(b.isbn_13)}"></td>
+                <td>${esc(b.title)}</td>
+                <td>${esc(b.author)}</td>
+                <td style="font-family:monospace; font-size:0.82rem;">${esc(b.isbn_13)}</td>
+            </tr>`;
+        }
+
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+        document.getElementById('apply-bulk-btn').disabled = false;
+
+        // Watch for selection changes
+        area.querySelectorAll('.bulk-check').forEach(cb => {
+            cb.addEventListener('change', updateBulkBtnState);
+        });
+    } catch (err) {
+        area.innerHTML = `<p style="color:var(--danger);">${err.message}</p>`;
+    }
+}
+
+function toggleAllBulk(master) {
+    document.querySelectorAll('.bulk-check').forEach(cb => cb.checked = master.checked);
+    updateBulkBtnState();
+}
+
+function updateBulkBtnState() {
+    const checked = document.querySelectorAll('.bulk-check:checked').length;
+    const btn = document.getElementById('apply-bulk-btn');
+    btn.disabled = checked === 0;
+    btn.textContent = checked > 0 ? `Apply to ${checked} Selected Book${checked > 1 ? 's' : ''}` : 'Apply to Selected Books';
+}
+
+async function applyBulkSale() {
+    const storeId = document.getElementById('bulk-store').value;
+    const promoType = document.getElementById('bulk-promo').value;
+    const discount = parseFloat(document.getElementById('bulk-discount').value) || 0;
+    const startDate = document.getElementById('bulk-start').value || null;
+    const endDate = document.getElementById('bulk-end').value || null;
+
+    const selected = [...document.querySelectorAll('.bulk-check:checked')].map(cb => cb.value);
+
+    if (selected.length === 0) { showToast('No books selected.', 'warning'); return; }
+    if (!storeId) { showToast('Select a store.', 'warning'); return; }
+
+    try {
+        const result = await apiPost('/api/pricing/bulk-sale', {
+            isbn_list: selected,
+            store_id: storeId,
+            discount_percent: discount,
+            discount_start: startDate,
+            discount_end: endDate,
+            promo_type: promoType,
+            promo_value: discount,
+        });
+        showToast(`Sale applied to ${result.updated.length} books!`);
+        if (result.errors.length > 0) {
+            showToast(`${result.errors.length} errors occurred.`, 'error');
+        }
+        // Refresh if same store is selected in pricing view
+        if (document.getElementById('price-store').value === storeId) {
+            loadPricing();
+        }
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}Bookworm - Manage Inventory{% endblock %}
+
+{% block content %}
+<h2 class="page-title">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+        <line x1="12" y1="22.08" x2="12" y2="12"/>
+    </svg>
+    Manage Inventory
+</h2>
+
+<!-- Store selector & search filters -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Search & Filter</span>
+        <button class="btn btn-outline btn-sm" onclick="openStoreModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Manage Stores
+        </button>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="inv-store">Store</label>
+            <select id="inv-store" class="form-control">
+                <option value="all">All Stores</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="inv-title">Title</label>
+            <input type="text" id="inv-title" class="form-control" placeholder="Search by title...">
+        </div>
+        <div class="form-group">
+            <label for="inv-author">Author</label>
+            <input type="text" id="inv-author" class="form-control" placeholder="Search by author...">
+        </div>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label for="inv-genre">Genre</label>
+            <input type="text" id="inv-genre" class="form-control" placeholder="Filter by genre...">
+        </div>
+        <div class="form-group">
+            <label for="inv-year">Year</label>
+            <input type="number" id="inv-year" class="form-control" placeholder="Filter by year...">
+        </div>
+        <div class="form-group">
+            <label for="inv-sort">Sort By</label>
+            <select id="inv-sort" class="form-control">
+                <option value="title">Title</option>
+                <option value="author">Author</option>
+                <option value="price">Price</option>
+                <option value="rating">Rating</option>
+                <option value="quantity">Quantity</option>
+                <option value="year">Year</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="inv-order">Order</label>
+            <select id="inv-order" class="form-control">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+            </select>
+        </div>
+    </div>
+
+    <div style="display:flex; gap:12px;">
+        <button class="btn btn-primary" onclick="loadInventory()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Search
+        </button>
+        <button class="btn btn-outline" onclick="resetFilters()">Clear Filters</button>
+    </div>
+</div>
+
+<!-- Results table -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title" id="result-count">Inventory</span>
+    </div>
+    <div id="inventory-table">
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+            <p>Use the filters above to search your inventory.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Quantity Modal -->
+<div class="modal-overlay" id="qty-modal">
+    <div class="modal">
+        <h3 class="modal-title">Edit Inventory</h3>
+        <p id="qty-modal-info"></p>
+        <div class="form-group">
+            <label for="new-qty">New Quantity</label>
+            <input type="number" id="new-qty" class="form-control" min="0">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeQtyModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveQty()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Manage Stores Modal -->
+<div class="modal-overlay" id="store-modal">
+    <div class="modal" style="max-width:560px;">
+        <h3 class="modal-title">Manage Stores</h3>
+        <div id="store-list" style="margin-bottom:16px; max-height:200px; overflow-y:auto;"></div>
+        <div style="border-top:1px solid var(--cream-dark); padding-top:16px;">
+            <p style="font-weight:600; margin-bottom:8px; font-size:0.9rem;">Add New Store</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="new-store-name">Store Name</label>
+                    <input type="text" id="new-store-name" class="form-control" placeholder="e.g. Downtown Branch">
+                </div>
+                <div class="form-group">
+                    <label for="new-store-loc">Location</label>
+                    <input type="text" id="new-store-loc" class="form-control" placeholder="e.g. 123 Main St">
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="addStore()">Add Store</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeStoreModal()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let editTarget = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadStoresIntoSelect('inv-store', true);
+});
+
+async function loadInventory() {
+    const storeId = document.getElementById('inv-store').value;
+    const title = document.getElementById('inv-title').value.trim();
+    const author = document.getElementById('inv-author').value.trim();
+    const genre = document.getElementById('inv-genre').value.trim();
+    const year = document.getElementById('inv-year').value.trim();
+    const sortBy = document.getElementById('inv-sort').value;
+    const order = document.getElementById('inv-order').value;
+
+    const area = document.getElementById('inventory-table');
+    area.innerHTML = '<div style="text-align:center; padding:24px;"><span class="spinner"></span></div>';
+
+    let url = `/api/inventory?sort_by=${sortBy}&order=${order}`;
+    if (storeId !== 'all') url += `&store_id=${storeId}`;
+    if (title) url += `&title=${encodeURIComponent(title)}`;
+    if (author) url += `&author=${encodeURIComponent(author)}`;
+    if (genre) url += `&genre=${encodeURIComponent(genre)}`;
+    if (year) url += `&year=${year}`;
+
+    try {
+        const data = await apiGet(url);
+        if (!data || data.length === 0) {
+            area.innerHTML = '<div class="empty-state"><p>No inventory records found.</p></div>';
+            document.getElementById('result-count').textContent = 'Inventory (0 results)';
+            return;
+        }
+
+        document.getElementById('result-count').textContent = `Inventory (${data.length} results)`;
+
+        let html = '<div class="table-wrapper"><table><thead><tr>';
+        html += '<th>Title</th><th>Author</th><th>ISBN-13</th><th>Store</th><th>Stock</th><th>Price</th><th>Rating</th><th>Genre</th><th>Year</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const row of data) {
+            const stockClass = row.quantity === 0 ? 'badge-red' : (row.quantity < 5 ? 'badge-brown' : 'badge-green');
+            const price = parseFloat(row.base_price || 0).toFixed(2);
+            const discount = parseFloat(row.discount_percent || 0);
+            let priceDisplay = `$${price}`;
+            if (discount > 0) {
+                const discounted = (parseFloat(row.base_price) * (1 - discount / 100)).toFixed(2);
+                priceDisplay = `<span style="text-decoration:line-through; color:var(--brown-light);">$${price}</span> $${discounted}`;
+            }
+
+            html += `<tr>
+                <td><strong>${esc(row.title)}</strong></td>
+                <td>${esc(row.author)}</td>
+                <td style="font-family:monospace; font-size:0.82rem;">${esc(row.isbn_13)}</td>
+                <td><span class="badge badge-brown">${esc(row.store_name)}</span></td>
+                <td><span class="badge ${stockClass}">${row.quantity}</span></td>
+                <td>${priceDisplay}</td>
+                <td>${row.rating ? '★'.repeat(Math.round(row.rating)) + ` ${row.rating}` : '—'}</td>
+                <td>${esc(row.genre || '—')}</td>
+                <td>${row.year || '—'}</td>
+                <td>
+                    <button class="btn btn-outline btn-sm" onclick="openQtyModal('${esc(row.isbn_13)}', '${esc(row.title)}', ${row.store_id}, '${esc(row.store_name)}', ${row.quantity})">
+                        Edit
+                    </button>
+                </td>
+            </tr>`;
+        }
+
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    } catch (err) {
+        area.innerHTML = `<div class="empty-state"><p style="color:var(--danger);">${err.message}</p></div>`;
+    }
+}
+
+function resetFilters() {
+    document.getElementById('inv-title').value = '';
+    document.getElementById('inv-author').value = '';
+    document.getElementById('inv-genre').value = '';
+    document.getElementById('inv-year').value = '';
+    document.getElementById('inv-sort').value = 'title';
+    document.getElementById('inv-order').value = 'asc';
+    document.getElementById('inv-store').value = 'all';
+}
+
+// --- Edit Quantity Modal ---
+function openQtyModal(isbn, title, storeId, storeName, qty) {
+    editTarget = { isbn, storeId };
+    document.getElementById('qty-modal-info').textContent = `"${title}" at ${storeName}`;
+    document.getElementById('new-qty').value = qty;
+    document.getElementById('qty-modal').classList.add('show');
+}
+
+function closeQtyModal() {
+    document.getElementById('qty-modal').classList.remove('show');
+    editTarget = null;
+}
+
+async function saveQty() {
+    if (!editTarget) return;
+    const qty = parseInt(document.getElementById('new-qty').value);
+    if (isNaN(qty) || qty < 0) { showToast('Please enter a valid quantity.', 'error'); return; }
+
+    try {
+        await apiPost('/api/inventory', {
+            isbn_13: editTarget.isbn,
+            store_id: editTarget.storeId,
+            quantity: qty,
+        });
+        showToast('Inventory updated.');
+        closeQtyModal();
+        loadInventory();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// --- Store Management Modal ---
+async function openStoreModal() {
+    document.getElementById('store-modal').classList.add('show');
+    await refreshStoreList();
+}
+
+function closeStoreModal() {
+    document.getElementById('store-modal').classList.remove('show');
+}
+
+async function refreshStoreList() {
+    const stores = await apiGet('/api/stores');
+    const list = document.getElementById('store-list');
+    if (!stores || stores.length === 0) {
+        list.innerHTML = '<p style="color:var(--brown-light); font-size:0.9rem;">No stores yet.</p>';
+        return;
+    }
+
+    let html = '<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Location</th><th>ID</th></tr></thead><tbody>';
+    for (const s of stores) {
+        html += `<tr>
+            <td><strong>${esc(s.store_name)}</strong></td>
+            <td>${esc(s.location || '—')}</td>
+            <td>${s.store_id}</td>
+        </tr>`;
+    }
+    html += '</tbody></table></div>';
+    list.innerHTML = html;
+}
+
+async function addStore() {
+    const name = document.getElementById('new-store-name').value.trim();
+    const loc = document.getElementById('new-store-loc').value.trim();
+    if (!name) { showToast('Store name is required.', 'error'); return; }
+
+    try {
+        await apiPost('/api/stores', { store_name: name, location: loc });
+        showToast(`Store "${name}" added.`);
+        document.getElementById('new-store-name').value = '';
+        document.getElementById('new-store-loc').value = '';
+        await refreshStoreList();
+        // Refresh the store select dropdown too
+        loadStoresIntoSelect('inv-store', true);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Enter key support
+['inv-title', 'inv-author', 'inv-genre', 'inv-year'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') loadInventory();
+    });
+});
+</script>
+{% endblock %}

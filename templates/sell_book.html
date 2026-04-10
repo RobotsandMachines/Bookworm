@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Bookworm - Sell Book{% endblock %}
+
+{% block content %}
+<h2 class="page-title">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+    </svg>
+    Sell Book
+</h2>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Record a Sale</span>
+        <span style="font-size:0.82rem; color:var(--brown-light);">Decreases inventory count without removing the listing</span>
+    </div>
+
+    <div class="form-row" style="margin-bottom: 16px;">
+        <div class="form-group">
+            <label for="sell-store">Store</label>
+            <select id="sell-store" class="form-control" onchange="loadStoreBooks()"></select>
+        </div>
+    </div>
+
+    <div class="search-bar">
+        <input type="text" id="sell-search" class="form-control" placeholder="Search by title, author, or ISBN...">
+        <button class="btn btn-secondary" onclick="searchInventory()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Search
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div id="sell-results">
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+            <p>Select a store and search for a book to record a sale.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Sell confirmation modal -->
+<div class="modal-overlay" id="sell-modal">
+    <div class="modal">
+        <h3 class="modal-title">Confirm Sale</h3>
+        <p id="sell-modal-info"></p>
+        <div class="form-group">
+            <label for="sell-qty">Copies Sold</label>
+            <input type="number" id="sell-qty" class="form-control" min="1" value="1">
+        </div>
+        <div id="sell-price-info" style="font-size:0.9rem; color:var(--brown); margin-bottom:8px;"></div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeSellModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="confirmSell()">Confirm Sale</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let sellTarget = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadStoresIntoSelect('sell-store');
+});
+
+async function searchInventory() {
+    const storeId = document.getElementById('sell-store').value;
+    const q = document.getElementById('sell-search').value.trim();
+    const area = document.getElementById('sell-results');
+
+    if (!storeId) { showToast('Please select a store.', 'warning'); return; }
+
+    area.innerHTML = '<div style="text-align:center; padding:24px;"><span class="spinner"></span></div>';
+
+    try {
+        let url = `/api/inventory?store_id=${storeId}`;
+        if (q) url += `&title=${encodeURIComponent(q)}`;
+
+        let data = await apiGet(url);
+
+        // If no results by title, try author
+        if ((!data || data.length === 0) && q) {
+            url = `/api/inventory?store_id=${storeId}&author=${encodeURIComponent(q)}`;
+            data = await apiGet(url);
+        }
+
+        if (!data || data.length === 0) {
+            area.innerHTML = '<div class="empty-state"><p>No books found in this store.</p></div>';
+            return;
+        }
+
+        let html = '<div class="table-wrapper"><table><thead><tr>';
+        html += '<th>Title</th><th>Author</th><th>ISBN-13</th><th>In Stock</th><th>Price</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const item of data) {
+            const stockClass = item.quantity === 0 ? 'badge-red' : (item.quantity < 5 ? 'badge-brown' : 'badge-green');
+            html += `<tr>
+                <td><strong>${esc(item.title)}</strong></td>
+                <td>${esc(item.author)}</td>
+                <td style="font-family:monospace; font-size:0.85rem;">${esc(item.isbn_13)}</td>
+                <td><span class="badge ${stockClass}">${item.quantity}</span></td>
+                <td>$${parseFloat(item.base_price || 0).toFixed(2)}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" ${item.quantity === 0 ? 'disabled' : ''}
+                        onclick="openSellModal('${esc(item.isbn_13)}', '${esc(item.title)}', ${item.quantity}, ${item.base_price || 0}, ${item.store_id})">
+                        Sell
+                    </button>
+                </td>
+            </tr>`;
+        }
+
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    } catch (err) {
+        area.innerHTML = `<div class="empty-state"><p style="color:var(--danger);">${err.message}</p></div>`;
+    }
+}
+
+function loadStoreBooks() {
+    const q = document.getElementById('sell-search').value.trim();
+    if (q) searchInventory();
+}
+
+function openSellModal(isbn, title, stock, price, storeId) {
+    sellTarget = { isbn, storeId };
+    document.getElementById('sell-modal-info').textContent = `Selling "${title}" — Current stock: ${stock}`;
+    document.getElementById('sell-qty').value = 1;
+    document.getElementById('sell-qty').max = stock;
+    document.getElementById('sell-price-info').textContent = price > 0 ? `Unit price: $${parseFloat(price).toFixed(2)}` : '';
+    document.getElementById('sell-modal').classList.add('show');
+}
+
+function closeSellModal() {
+    document.getElementById('sell-modal').classList.remove('show');
+    sellTarget = null;
+}
+
+async function confirmSell() {
+    if (!sellTarget) return;
+    const qty = parseInt(document.getElementById('sell-qty').value) || 1;
+
+    try {
+        await apiPost('/api/inventory/sell', {
+            isbn_13: sellTarget.isbn,
+            store_id: sellTarget.storeId,
+            quantity: qty,
+        });
+        showToast(`Sold ${qty} copies successfully!`);
+        closeSellModal();
+        searchInventory();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+document.getElementById('sell-search').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') searchInventory();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Bookworm - Remove Book{% endblock %}
+
+{% block content %}
+<h2 class="page-title">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        <path d="M10 11v6M14 11v6"/>
+        <path d="M9 6V3h6v3"/>
+    </svg>
+    Remove Book
+</h2>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Search for a Book to Remove</span>
+        <span style="font-size:0.82rem; color:var(--danger);">This removes the entire listing from the database</span>
+    </div>
+    <div class="search-bar">
+        <input type="text" id="search-input" class="form-control" placeholder="Search by title, author, or ISBN...">
+        <button class="btn btn-secondary" onclick="searchBooks()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Search
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div id="results-area">
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <p>Search for a book to remove it from the database.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Confirm deletion modal -->
+<div class="modal-overlay" id="delete-modal">
+    <div class="modal">
+        <h3 class="modal-title">Confirm Deletion</h3>
+        <p id="delete-msg">Are you sure you want to permanently remove this book? This also removes all associated inventory and pricing data.</p>
+        <div class="modal-actions">
+            <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+            <button class="btn btn-danger" id="confirm-delete-btn" onclick="confirmDelete()">Delete Permanently</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let deleteTarget = null;
+
+async function searchBooks() {
+    const q = document.getElementById('search-input').value.trim();
+    if (!q) return;
+
+    const area = document.getElementById('results-area');
+    area.innerHTML = '<div style="text-align:center; padding:24px;"><span class="spinner"></span></div>';
+
+    try {
+        // Search by title first, then also by ISBN
+        let books = await apiGet(`/api/books?title=${encodeURIComponent(q)}`);
+        if (books && books.length === 0) {
+            books = await apiGet(`/api/books?isbn=${encodeURIComponent(q)}`);
+        }
+        if (books && books.length === 0) {
+            books = await apiGet(`/api/books?author=${encodeURIComponent(q)}`);
+        }
+
+        if (!books || books.length === 0) {
+            area.innerHTML = '<div class="empty-state"><p>No books found matching your search.</p></div>';
+            return;
+        }
+
+        let html = '<div class="table-wrapper"><table><thead><tr>';
+        html += '<th>Title</th><th>Author</th><th>ISBN-13</th><th>Genre</th><th>Year</th><th>Action</th>';
+        html += '</tr></thead><tbody>';
+
+        for (const b of books) {
+            html += `<tr>
+                <td><strong>${esc(b.title)}</strong></td>
+                <td>${esc(b.author)}</td>
+                <td style="font-family:monospace; font-size:0.85rem;">${esc(b.isbn_13)}</td>
+                <td>${esc(b.genre || '—')}</td>
+                <td>${b.year || '—'}</td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="openDeleteModal('${esc(b.isbn_13)}', '${esc(b.title)}')">
+                        Remove
+                    </button>
+                </td>
+            </tr>`;
+        }
+
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    } catch (err) {
+        area.innerHTML = `<div class="empty-state"><p style="color:var(--danger);">${err.message}</p></div>`;
+    }
+}
+
+function openDeleteModal(isbn, title) {
+    deleteTarget = isbn;
+    document.getElementById('delete-msg').textContent =
+        `Are you sure you want to permanently remove "${title}" (${isbn})? This also removes all associated inventory and pricing data.`;
+    document.getElementById('delete-modal').classList.add('show');
+}
+
+function closeDeleteModal() {
+    document.getElementById('delete-modal').classList.remove('show');
+    deleteTarget = null;
+}
+
+async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    try {
+        await apiDelete(`/api/books/${deleteTarget}`);
+        showToast('Book removed successfully.');
+        closeDeleteModal();
+        searchBooks(); // refresh
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function esc(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Allow Enter key in search
+document.getElementById('search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') searchBooks();
+});
+</script>
+{% endblock %}

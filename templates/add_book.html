@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Bookworm - Add New Book{% endblock %}
+
+{% block content %}
+<h2 class="page-title">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M5 12h14"/>
+    </svg>
+    Add New Book
+</h2>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">ISBN Lookup</span>
+        <span style="font-size:0.82rem; color:var(--brown-light);">Auto-fill from Open Library</span>
+    </div>
+    <div class="search-bar">
+        <input type="text" id="isbn-lookup" class="form-control" placeholder="Enter ISBN-10 or ISBN-13...">
+        <button class="btn btn-secondary" id="lookup-btn" onclick="lookupISBN()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Lookup
+        </button>
+    </div>
+    <div id="lookup-status" style="font-size:0.85rem; color:var(--brown-light); margin-top:-8px; margin-bottom:8px;"></div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Book Details</span>
+    </div>
+    <form id="add-book-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="isbn_13">ISBN-13 *</label>
+                <input type="text" id="isbn_13" class="form-control" required maxlength="13">
+            </div>
+            <div class="form-group">
+                <label for="isbn_10">ISBN-10</label>
+                <input type="text" id="isbn_10" class="form-control" maxlength="10">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group" style="grid-column: span 2;">
+                <label for="title">Title *</label>
+                <input type="text" id="title" class="form-control" required>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="author">Author *</label>
+                <input type="text" id="author" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="publisher">Publisher</label>
+                <input type="text" id="publisher" class="form-control">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="year">Year</label>
+                <input type="number" id="year" class="form-control" min="0" max="2100">
+            </div>
+            <div class="form-group">
+                <label for="edition">Edition</label>
+                <input type="number" id="edition" class="form-control" min="1" value="1">
+            </div>
+            <div class="form-group">
+                <label for="page_count">Page Count</label>
+                <input type="number" id="page_count" class="form-control" min="1">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="genre">Genre</label>
+                <input type="text" id="genre" class="form-control" placeholder="e.g. Fiction, Science, History">
+            </div>
+            <div class="form-group">
+                <label for="rating">Rating (0-5)</label>
+                <input type="number" id="rating" class="form-control" min="0" max="5" step="0.1" value="0">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="language">Language</label>
+                <input type="text" id="language" class="form-control" value="English">
+            </div>
+            <div class="form-group">
+                <label for="cover_type">Cover Type</label>
+                <select id="cover_type" class="form-control">
+                    <option value="paperback">Paperback</option>
+                    <option value="hardcover">Hardcover</option>
+                    <option value="ebook">E-book</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="margin-top: 8px;">
+            <button type="submit" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Add Book
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Optional: add initial inventory -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Initial Inventory (Optional)</span>
+        <span style="font-size:0.82rem; color:var(--brown-light);">Set stock for a store after adding the book</span>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="init-store">Store</label>
+            <select id="init-store" class="form-control"></select>
+        </div>
+        <div class="form-group">
+            <label for="init-qty">Quantity</label>
+            <input type="number" id="init-qty" class="form-control" min="0" value="0">
+        </div>
+        <div class="form-group">
+            <label for="init-price">Base Price ($)</label>
+            <input type="number" id="init-price" class="form-control" min="0" step="0.01" value="0">
+        </div>
+    </div>
+    <p id="init-inventory-note" style="font-size: 0.82rem; color: var(--brown-light); margin-top: -8px;">
+        Add the book first, then this section will save inventory & pricing.
+    </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    loadStoresIntoSelect('init-store');
+});
+
+async function lookupISBN() {
+    const isbn = document.getElementById('isbn-lookup').value.trim();
+    const status = document.getElementById('lookup-status');
+    const btn = document.getElementById('lookup-btn');
+
+    if (!isbn) { status.textContent = 'Please enter an ISBN.'; return; }
+
+    btn.disabled = true;
+    status.innerHTML = '<span class="spinner"></span> Looking up...';
+
+    try {
+        const data = await apiGet(`/api/books/lookup/${isbn}`);
+        if (!data || data.error) {
+            status.textContent = data?.error || 'ISBN not found.';
+            return;
+        }
+
+        // Auto-fill fields
+        if (data.isbn_13)   document.getElementById('isbn_13').value = data.isbn_13;
+        if (data.isbn_10)   document.getElementById('isbn_10').value = data.isbn_10;
+        if (data.title)     document.getElementById('title').value = data.title;
+        if (data.author)    document.getElementById('author').value = data.author;
+        if (data.publisher) document.getElementById('publisher').value = data.publisher;
+        if (data.year)      document.getElementById('year').value = data.year;
+        if (data.page_count) document.getElementById('page_count').value = data.page_count;
+        if (data.subjects && data.subjects.length > 0) {
+            document.getElementById('genre').value = data.subjects[0];
+        }
+
+        // If the lookup ISBN itself wasn't returned in identifiers, fill it
+        if (!data.isbn_13 && isbn.length === 13) document.getElementById('isbn_13').value = isbn;
+        if (!data.isbn_10 && isbn.length === 10) document.getElementById('isbn_10').value = isbn;
+
+        status.textContent = 'Book info loaded. Review and edit as needed.';
+        status.style.color = 'var(--green-dark)';
+    } catch (e) {
+        status.textContent = `Lookup failed: ${e.message}`;
+        status.style.color = 'var(--danger)';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+document.getElementById('add-book-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const bookData = {
+        isbn_13:    document.getElementById('isbn_13').value.trim(),
+        isbn_10:    document.getElementById('isbn_10').value.trim(),
+        title:      document.getElementById('title').value.trim(),
+        author:     document.getElementById('author').value.trim(),
+        publisher:  document.getElementById('publisher').value.trim(),
+        year:       document.getElementById('year').value ? parseInt(document.getElementById('year').value) : null,
+        edition:    parseInt(document.getElementById('edition').value) || 1,
+        page_count: document.getElementById('page_count').value ? parseInt(document.getElementById('page_count').value) : null,
+        genre:      document.getElementById('genre').value.trim(),
+        rating:     parseFloat(document.getElementById('rating').value) || 0,
+        language:   document.getElementById('language').value.trim(),
+        cover_type: document.getElementById('cover_type').value,
+    };
+
+    try {
+        await apiPost('/api/books', bookData);
+        showToast(`"${bookData.title}" added successfully!`);
+
+        // Set initial inventory if quantity > 0
+        const storeId = document.getElementById('init-store').value;
+        const qty = parseInt(document.getElementById('init-qty').value) || 0;
+        const price = parseFloat(document.getElementById('init-price').value) || 0;
+
+        if (qty > 0 && storeId) {
+            await apiPost('/api/inventory', {
+                isbn_13: bookData.isbn_13, store_id: storeId, quantity: qty
+            });
+        }
+        if (price > 0 && storeId) {
+            await apiPost('/api/pricing', {
+                isbn_13: bookData.isbn_13, store_id: storeId, base_price: price
+            });
+        }
+
+        // Reset form
+        document.getElementById('add-book-form').reset();
+        document.getElementById('edition').value = '1';
+        document.getElementById('language').value = 'English';
+        document.getElementById('rating').value = '0';
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+});
+</script>
+{% endblock %}
