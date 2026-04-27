@@ -5,6 +5,7 @@ Flask Backend Application
 
 import os
 import secrets
+from io import BytesIO
 from functools import wraps
 from datetime import date, datetime
 
@@ -12,10 +13,11 @@ import bcrypt
 import requests as http_requests
 from dotenv import load_dotenv
 from flask import (
-    Flask, render_template, request, jsonify, session, redirect, url_for
+    Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 )
 from flask_cors import CORS
 from supabase import create_client
+import qrcode
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -64,6 +66,27 @@ def role_required(*roles):
     return decorator
 
 
+def make_book_qr_code(isbn_13: str) -> str:
+    """Stable QR payload for a book. QR can be printed and scanned later."""
+    return f"BOOK-{isbn_13}"
+
+
+def parse_book_qr_value(raw_value: str) -> str | None:
+    """Accepts the generated QR value, a full URL containing it, or a manually typed ISBN."""
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+
+    if "BOOK-" in value:
+        value = value.split("BOOK-", 1)[1]
+
+    value = value.replace("-", "").replace(" ", "")
+    if value.isdigit() and len(value) in (10, 13):
+        return value
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Page routes (HTML templates)
 # ---------------------------------------------------------------------------
@@ -105,6 +128,12 @@ def inventory_page():
 @login_required
 def pricing_page():
     return render_template("pricing.html")
+
+
+@app.route("/scan")
+@login_required
+def scan_page():
+    return render_template("scan.html")
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +341,7 @@ def api_add_book():
         "publisher": data.get("publisher", "").strip() or None,
         "language": data.get("language", "English"),
         "cover_type": data.get("cover_type", "paperback"),
+        "qr_code": make_book_qr_code(isbn_13),
     }
 
     try:
@@ -321,13 +351,96 @@ def api_add_book():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/books/<isbn_13>/qr", methods=["GET"])
+@login_required
+def api_get_book_qr(isbn_13):
+    """Return a PNG QR code for a book. The QR contains BOOK-{isbn_13}."""
+    resp = supabase.table("books").select("isbn_13, qr_code").eq("isbn_13", isbn_13).execute()
+    if not resp.data:
+        return jsonify({"error": "Book not found"}), 404
+
+    qr_value = resp.data[0].get("qr_code") or make_book_qr_code(isbn_13)
+    img = qrcode.make(qr_value)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
+
+
+@app.route("/api/scan/checkout", methods=["POST"])
+@login_required
+def api_scan_checkout():
+    """Scan a book QR/manual ISBN and check out 1 copy for the logged-in user's store."""
+    data = request.get_json() or {}
+    raw_qr = data.get("qr") or data.get("isbn_13") or ""
+    isbn_13 = parse_book_qr_value(raw_qr)
+    quantity = int(data.get("quantity", 1) or 1)
+    store_id = data.get("store_id") or session.get("store_id")
+
+    if not isbn_13:
+        return jsonify({"error": "Invalid QR code or ISBN"}), 400
+    if quantity < 1:
+        return jsonify({"error": "Quantity must be at least 1"}), 400
+    if not store_id:
+        return jsonify({"error": "No store assigned to this user. Select a store manually or update the user account."}), 400
+
+    book_resp = supabase.table("books").select("isbn_13,title,author").eq("isbn_13", isbn_13).execute()
+    if not book_resp.data:
+        return jsonify({"error": "Book not found"}), 404
+
+    inv_resp = (supabase.table("inventory")
+                .select("*")
+                .eq("isbn_13", isbn_13)
+                .eq("store_id", int(store_id))
+                .execute())
+
+    if not inv_resp.data:
+        return jsonify({"error": "No inventory record found for this book/store"}), 404
+
+    current_qty = int(inv_resp.data[0]["quantity"] or 0)
+    new_qty = current_qty - quantity
+
+    if new_qty < 0:
+        return jsonify({"error": f"Not enough stock. Current: {current_qty}"}), 400
+
+    update_resp = (supabase.table("inventory")
+                   .update({"quantity": new_qty})
+                   .eq("isbn_13", isbn_13)
+                   .eq("store_id", int(store_id))
+                   .execute())
+
+    # Best-effort audit log. If the table does not exist yet, checkout still succeeds.
+    try:
+        supabase.table("checkout_logs").insert({
+            "isbn_13": isbn_13,
+            "store_id": int(store_id),
+            "user_id": session.get("user_id"),
+            "quantity": quantity,
+            "scan_value": raw_qr,
+        }).execute()
+    except Exception:
+        pass
+
+    book = book_resp.data[0]
+    return jsonify({
+        "message": f"Checked out {quantity} copy of {book['title']}",
+        "isbn_13": isbn_13,
+        "title": book["title"],
+        "author": book.get("author"),
+        "store_id": int(store_id),
+        "quantity_checked_out": quantity,
+        "new_quantity": new_qty,
+        "data": update_resp.data[0] if update_resp.data else {},
+    })
+
+
 @app.route("/api/books/<isbn_13>", methods=["PUT"])
 @login_required
 @role_required("admin", "manager")
 def api_update_book(isbn_13):
     data = request.get_json()
     allowed = ["isbn_10", "title", "author", "year", "edition", "page_count",
-               "genre", "rating", "publisher", "language", "cover_type"]
+               "genre", "rating", "publisher", "language", "cover_type", "qr_code"]
     updates = {k: v for k, v in data.items() if k in allowed}
 
     if not updates:
