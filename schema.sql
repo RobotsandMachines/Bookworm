@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS books (
     language    TEXT DEFAULT 'English',
     cover_type  TEXT DEFAULT 'paperback'
                 CHECK (cover_type IN ('paperback', 'hardcover', 'ebook')),
+    qr_code     TEXT UNIQUE,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -73,17 +74,29 @@ CREATE TABLE IF NOT EXISTS pricing (
     UNIQUE(isbn_13, store_id)
 );
 
--- 6. Create indexes for common queries
+-- 6. CHECKOUT LOGS table (audit trail for QR checkout scans)
+CREATE TABLE IF NOT EXISTS checkout_logs (
+    checkout_id  SERIAL PRIMARY KEY,
+    isbn_13      TEXT NOT NULL REFERENCES books(isbn_13) ON DELETE CASCADE,
+    store_id     INT REFERENCES stores(store_id) ON DELETE SET NULL,
+    user_id      INT REFERENCES users(user_id) ON DELETE SET NULL,
+    quantity     INT NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    scan_value   TEXT,
+    checked_out_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
 CREATE INDEX IF NOT EXISTS idx_books_genre ON books(genre);
 CREATE INDEX IF NOT EXISTS idx_books_year ON books(year);
+CREATE INDEX IF NOT EXISTS idx_books_qr_code ON books(qr_code);
 CREATE INDEX IF NOT EXISTS idx_inventory_store ON inventory(store_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_isbn ON inventory(isbn_13);
 CREATE INDEX IF NOT EXISTS idx_pricing_store ON pricing(store_id);
 CREATE INDEX IF NOT EXISTS idx_pricing_isbn ON pricing(isbn_13);
 
--- 7. Create a default admin user (password: admin123 — change in production!)
+-- 8. Create a default admin user (password: admin123 — change in production!)
 -- The hash below is bcrypt for 'admin123'
 -- You should change this password immediately after first login
 INSERT INTO users (username, password_hash, display_name, auth_level, store_id)
@@ -128,3 +141,4 @@ FROM books b
 CROSS JOIN stores s
 LEFT JOIN inventory i ON i.isbn_13 = b.isbn_13 AND i.store_id = s.store_id
 LEFT JOIN pricing p ON p.isbn_13 = b.isbn_13 AND p.store_id = s.store_id;
+
